@@ -2,6 +2,7 @@ import cv2
 import time
 import threading
 import serial
+import json
 import joblib
 import pandas as pd
 import numpy as np
@@ -10,7 +11,7 @@ from flask import Flask, render_template, Response, jsonify
 from ultralytics import YOLO
 
 # --- CONFIGURATION ---
-SERIAL_PORT = 'COM3'   # CHECK YOUR ARDUINO PORT
+SERIAL_PORT = 'COM7'   # CHECK YOUR ARDUINO PORT
 BAUD_RATE = 115200
 SNAPSHOT_INTERVAL = 1.0  # Take a photo every 1 second
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,92 +47,126 @@ frame_lock = threading.Lock()
 def piezo_worker():
     print("⚡ Piezo Thread Started...")
     
-    # Load AI Model
+    # Load AI Model (Not used for heuristic, but kept)
     clf = None
     try:
-        clf = joblib.load(MODEL_FILE)
-        print("✅ Piezo AI Model Loaded")
+        if os.path.exists(MODEL_FILE):
+            clf = joblib.load(MODEL_FILE)
+            print("✅ Piezo AI Model Loaded")
     except Exception as e:
-        print("❌ Model loading failed!")
-        print("Path tried:", MODEL_FILE)
-        print("Error:", e)
+        print("❌ Model loading failed:", e)
 
-
-    # Connect Serial
+    # Initialize Serial
     ser = None
-    try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        print(f"✅ Arduino Connected on {SERIAL_PORT}")
-    except:
-        print("❌ Arduino not found. Using Mock Data mode.")
-
-    data_buffer = []
-    WINDOW_SIZE = 50 
-
+    
     while True:
+        # Reconnect Logic
+        if ser is None:
+            try:
+                ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+                print(f"✅ Arduino Connected on {SERIAL_PORT}")
+            except:
+                print(f"❌ Waiting for Arduino on {SERIAL_PORT}...")
+                time.sleep(2)
+                continue
+
         try:
-            val = 0
-            # Read from Serial or Mock
-            if ser and ser.in_waiting > 0:
+            line = ""
+            if ser.in_waiting > 0:
                 line = ser.readline().decode('utf-8').strip()
-                parts = line.split(',')
-                if len(parts) == 2:
-                    val = int(parts[1])
-            elif ser is None:
-                time.sleep(0.05)
-                val = np.random.randint(0, 10) # Mock noise
-
-            # Buffer Logic
-            data_buffer.append(val)
-            if len(data_buffer) > WINDOW_SIZE:
-                data_buffer.pop(0)
-
-            # Prediction
-            risk = 0.0
-            if len(data_buffer) == WINDOW_SIZE and clf:
-                df = pd.DataFrame({'Voltage': data_buffer})
-                features = [[
-                    df['Voltage'].max(),
-                    df['Voltage'].std(),
-                    df['Voltage'].min(),
-                    (df['Voltage'] > 50).sum()
-                ]]
-                risk = clf.predict_proba(features)[0][1]
-            else:
-                # Fallback if no model
-                risk = min(1.0, max(data_buffer) / 100.0)
-
-            # Update State
-            system_state["piezo"]["risk"] = float(risk)
-            system_state["piezo"]["raw_val"] = val
             
+            # Parsing Logic
+            if not line: continue
+            
+            # --- PARSING ---
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                # print("JSON Parse Error:", line)
+                continue
+
+            # Extract Values from Parts
+            dist = float(data.get('D', 100.0))
+            vib = int(data.get('V', 0))
+            ir = int(data.get('IR', 0))
+            pir = int(data.get('PIR', 0))
+            piezos = [float(data.get(f'P{i}', 0.0)) for i in range(1, 6)]
+
+            # --- RISK CALCULATION ---
+            score_dist = 1.0 if dist < 50 else 0.0
+            score_vib = 1.0 if vib == 1 else 0.0
+            score_motion = 1.0 if (ir == 1 or pir == 1) else 0.0
+            total_pressure = sum(piezos)
+            score_piezo = min(1.0, total_pressure / 50.0)
+
+            sensor_risk = (0.2 * score_dist) + \
+                          (0.2 * score_vib) + \
+                          (0.2 * score_motion) + \
+                          (0.4 * score_piezo)
+            
+            # Update State
+            system_state["piezo"]["risk"] = float(sensor_risk)
+            system_state["piezo"]["raw_data"] = data
+            
+            # Debug Print
+            # print(f"Risk: {sensor_risk:.2f}")
+
         except Exception as e:
-            pass # Ignore serial glitches
+            print(f"❌ Serial Error: {e}")
+            if ser:
+                try:
+                    ser.close()
+                except:
+                    pass
+            ser = None # Trigger Reconnect
+            time.sleep(1) 
 
 # --- 2. CAMERA SNAPSHOT WORKER (Background Thread) ---
 def camera_snapshot_worker():
     global last_processed_frame
     print("📷 Camera Snapshot Thread Started...")
     
-    cap = cv2.VideoCapture(0) # Open Camera
+    # Try Index 0 with DirectShow (Better for Windows)
+    print("Trying Camera Index 0...")
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened() or not cap.read()[0]:
+        print("⚠️ Index 0 failed/empty. Trying Index 1...")
+        cap.release()
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        
+    if not cap.isOpened():
+        print("❌ CRITICAL ERROR: Could not open ANY camera.")
+    else:
+        print(f"✅ Camera Opened Successfully")
+
     model = YOLO('yolov8n.pt')
+    print("✅ YOLO Model Loaded")
 
     while True:
         # 1. Capture Snapshot
+        # print("Attempting read...") 
         ret, frame = cap.read()
         if not ret:
+            print("⚠️ Warning: Failed to read frame from camera. Retrying...")
             time.sleep(3)
             continue
-
+        
+        # print(f"✅ Frame Captured: {frame.shape}") # Verify we actually get data
+        
         # 2. Visibility Check (Blind/Dark Detection)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         brightness = np.mean(gray)
         contrast = np.std(gray)
         
+        # Debug Info on Frame
+        cv2.putText(frame, f"B:{brightness:.1f} C:{contrast:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
         confidence = 1.0
-        if brightness < 30 or contrast < 10:
+        # Relaxed thresholds for testing: Brightness < 10 (very dark) or Contrast < 5
+        if brightness < 10 or contrast < 5:
             confidence = 0.1 # Camera is blocked or dark
-            cv2.putText(frame, "⚠️ POOR VISIBILITY", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+            cv2.putText(frame, "POOR VISIBILITY", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
         
         # 3. YOLO Detection
         count = 0
@@ -184,10 +219,14 @@ def get_fusion_stats():
     
     # --- FUSION LOGIC ---
     # Weight Adjustment: If camera is blind, trust Piezo more.
-    w_cam = 0.6 * c_conf
-    w_piezo = 1.0 - w_cam
+    if c_conf > 0.5:
+        w_cam = 0.6
+        w_sensor = 0.4
+    else:
+        w_cam = 0.1
+        w_sensor = 0.9
     
-    total_risk = (c_risk * w_cam) + (p_risk * w_piezo)
+    total_risk = (c_risk * w_cam) + (p_risk * w_sensor)
     
     status = "SAFE"
     if total_risk > 0.8: status = "CRITICAL"
@@ -201,7 +240,7 @@ def get_fusion_stats():
             "status": status,
             "weights": {
                 "cam": round(w_cam, 2),
-                "piezo": round(w_piezo, 2)
+                "piezo": round(w_sensor, 2)
             }
         }
     }

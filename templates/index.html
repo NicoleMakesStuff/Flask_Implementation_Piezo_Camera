@@ -1,33 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Integrated Crowd Monitor</title>
     <style>
-        body { font-family: sans-serif; background: #111; color: white; margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .card { background: #222; padding: 20px; border-radius: 10px; border: 1px solid #333; }
-        
-        img { width: 100%; border-radius: 8px; border: 2px solid #555; }
-        
-        h2 { margin-top: 0; color: #ccc; }
-        .value { float: right; font-weight: bold; color: #0ff; }
-        
-        .progress { background: #444; height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden; }
-        .bar { height: 100%; width: 0%; transition: width 0.5s; }
-        
-        .alert-box { 
-            text-align: center; padding: 15px; font-size: 1.5em; font-weight: bold; 
-            margin-top: 20px; border-radius: 8px; 
+        body {
+            font-family: sans-serif;
+            background: #111;
+            color: white;
+            margin: 0;
+            padding: 20px;
         }
-        .safe { background: #064e3b; color: #6ee7b7; }
-        .warning { background: #713f12; color: #fcd34d; }
-        .critical { background: #7f1d1d; color: #fca5a5; animation: blink 1s infinite; }
-        
-        @keyframes blink { 50% { opacity: 0.5; } }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: #222;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+
+        img {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #555;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #ccc;
+        }
+
+        .value {
+            float: right;
+            font-weight: bold;
+            color: #0ff;
+        }
+
+        .progress {
+            background: #444;
+            height: 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .bar {
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s;
+        }
+
+        .bar-vert {
+            width: 100%;
+            height: 0%;
+            transition: height 0.5s;
+        }
+
+        /* New vertical bar class */
+
+        .alert-box {
+            text-align: center;
+            padding: 15px;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 20px;
+            border-radius: 8px;
+        }
+
+        .safe {
+            background: #064e3b;
+            color: #6ee7b7;
+        }
+
+        .warning {
+            background: #713f12;
+            color: #fcd34d;
+        }
+
+        .critical {
+            background: #7f1d1d;
+            color: #fca5a5;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0.5;
+            }
+        }
     </style>
 </head>
+
 <body>
 
     <div class="alert-box safe" id="main-alert">INITIALIZING SYSTEM...</div>
@@ -43,24 +114,82 @@
 
         <div class="card">
             <h2>🧠 Fusion Engine Stats</h2>
-            
+
             <div style="margin-bottom: 15px;">
                 <div>Camera Risk (People Count) <span class="value" id="val-cam">0.0</span></div>
-                <div class="progress"><div id="bar-cam" class="bar" style="background:#3b82f6"></div></div>
+                <div class="progress">
+                    <div id="bar-cam" class="bar" style="background:#3b82f6"></div>
+                </div>
             </div>
 
             <div style="margin-bottom: 15px;">
                 <div>Piezo Risk (Vibration AI) <span class="value" id="val-piezo">0.0</span></div>
-                <div class="progress"><div id="bar-piezo" class="bar" style="background:#a855f7"></div></div>
+                <div class="progress">
+                    <div id="bar-piezo" class="bar" style="background:#a855f7"></div>
+                </div>
+
+                <!-- Individual Piezo Sensors -->
+                <div style="margin-top: 10px; font-size: 0.8em; color: #aaa;">
+                    <div style="display: flex; gap: 5px; text-align: center;">
+                        <div style="flex:1">P1<br><span id="v-p1" style="color:#a855f7; font-weight:bold">0</span></div>
+                        <div style="flex:1">P2<br><span id="v-p2" style="color:#a855f7; font-weight:bold">0</span></div>
+                        <div style="flex:1">P3<br><span id="v-p3" style="color:#a855f7; font-weight:bold">0</span></div>
+                        <div style="flex:1">P4<br><span id="v-p4" style="color:#a855f7; font-weight:bold">0</span></div>
+                        <div style="flex:1">P5<br><span id="v-p5" style="color:#a855f7; font-weight:bold">0</span></div>
+                    </div>
+                    <!-- Wrapper with flex-end to push bars to bottom -->
+                    <div style="display: flex; gap: 5px; height: 60px; margin-top: 5px;">
+                        <div style="flex:1; background:#333; height:100%; display:flex; align-items:flex-end">
+                            <div id="b-p1" class="bar-vert" style="background:#a855f7"></div>
+                        </div>
+                        <div style="flex:1; background:#333; height:100%; display:flex; align-items:flex-end">
+                            <div id="b-p2" class="bar-vert" style="background:#a855f7"></div>
+                        </div>
+                        <div style="flex:1; background:#333; height:100%; display:flex; align-items:flex-end">
+                            <div id="b-p3" class="bar-vert" style="background:#a855f7"></div>
+                        </div>
+                        <div style="flex:1; background:#333; height:100%; display:flex; align-items:flex-end">
+                            <div id="b-p4" class="bar-vert" style="background:#a855f7"></div>
+                        </div>
+                        <div style="flex:1; background:#333; height:100%; display:flex; align-items:flex-end">
+                            <div id="b-p5" class="bar-vert" style="background:#a855f7"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Environmental Sensors -->
+                <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+                    <div style="font-size: 0.9em; color: #ccc; margin-bottom: 5px;">📍 Environmental Sensors</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div style="background:#333; padding:5px; border-radius:5px">
+                            <div style="font-size:0.7em; color:#aaa">Distance</div>
+                            <div style="font-weight:bold; color:#fff"><span id="val-dist">--</span> cm</div>
+                        </div>
+                        <div style="background:#333; padding:5px; border-radius:5px">
+                            <div style="font-size:0.7em; color:#aaa">Vibration</div>
+                            <div id="stat-vib" style="font-weight:bold; color:#555">--</div>
+                        </div>
+                        <div style="background:#333; padding:5px; border-radius:5px">
+                            <div style="font-size:0.7em; color:#aaa">IR Motion</div>
+                            <div id="stat-ir" style="font-weight:bold; color:#555">--</div>
+                        </div>
+                        <div style="background:#333; padding:5px; border-radius:5px">
+                            <div style="font-size:0.7em; color:#aaa">PIR Motion</div>
+                            <div id="stat-pir" style="font-weight:bold; color:#555">--</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <hr style="border-color:#333">
 
             <div style="margin-bottom: 15px;">
                 <div>Total Fused Risk <span class="value" id="val-total">0.0</span></div>
-                <div class="progress"><div id="bar-total" class="bar" style="background:#ef4444"></div></div>
+                <div class="progress">
+                    <div id="bar-total" class="bar" style="background:#ef4444"></div>
+                </div>
             </div>
-            
+
             <p style="font-size:0.8em; color:#aaa">
                 Dynamic Weights: Cam <b id="w-cam">0.6</b> | Piezo <b id="w-piezo">0.4</b>
             </p>
@@ -84,10 +213,47 @@
                     document.getElementById('val-total').innerText = data.fusion.total_risk.toFixed(2);
                     document.getElementById('cam-conf').innerText = Math.round(data.camera.confidence * 100) + "%";
 
-                    // Update Bars
+                    // Update Main Bars
                     document.getElementById('bar-cam').style.width = (data.camera.risk * 100) + "%";
                     document.getElementById('bar-piezo').style.width = (data.piezo.risk * 100) + "%";
                     document.getElementById('bar-total').style.width = (data.fusion.total_risk * 100) + "%";
+
+                    // Update Individual Piezos
+                    if (data.piezo.raw_data) {
+                        const maxVal = 3.0; // Lowered to 3V for better visibility (Piezo spikes are quick)
+                        ['P1', 'P2', 'P3', 'P4', 'P5'].forEach((k, i) => {
+                            const val = data.piezo.raw_data[k] || 0;
+                            // Clamp to 100%
+                            let h = (val / maxVal) * 100;
+                            if (h > 100) h = 100;
+
+                            document.getElementById('v-' + k.toLowerCase()).innerText = val.toFixed(2);
+                            document.getElementById('b-' + k.toLowerCase()).style.height = h + "%";
+                        });
+
+                        // Update Environmental Sensors
+                        const dist = data.piezo.raw_data['D'] || 0;
+                        const vib = data.piezo.raw_data['V'];
+                        const ir = data.piezo.raw_data['IR'];
+                        const pir = data.piezo.raw_data['PIR'];
+
+                        document.getElementById('val-dist').innerText = dist.toFixed(1);
+
+                        function setStatus(id, val, activeText = "DETECTED", inactiveText = "CLEAR") {
+                            const el = document.getElementById(id);
+                            if (val === 1) {
+                                el.innerText = activeText;
+                                el.style.color = "#f43f5e"; // Red/Pink
+                            } else {
+                                el.innerText = inactiveText;
+                                el.style.color = "#10b981"; // Green
+                            }
+                        }
+
+                        setStatus('stat-vib', vib);
+                        setStatus('stat-ir', ir);
+                        setStatus('stat-pir', pir);
+                    }
 
                     // Update Weights Text
                     document.getElementById('w-cam').innerText = data.fusion.weights.cam;
@@ -96,7 +262,7 @@
                     // Update Alert Box
                     const alertBox = document.getElementById('main-alert');
                     const status = data.fusion.status;
-                    
+
                     alertBox.className = "alert-box"; // reset
                     if (status === "CRITICAL") {
                         alertBox.classList.add("critical");
@@ -115,4 +281,5 @@
         setInterval(updateSystem, 1000);
     </script>
 </body>
+
 </html>

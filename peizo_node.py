@@ -34,44 +34,61 @@ WINDOW_SIZE = 50 # 0.5 seconds of data (Faster response for demo)
 print("⚡ Piezo Node Started. Tap the sensor...")
 
 while True:
-    if ser.in_waiting > 0:
-        try:
+
+    try:
+        if ser.in_waiting > 0:
             line = ser.readline().decode('utf-8').strip()
-            parts = line.split(',')
+            # Expected: D: 12.3 | V: 1 | IR: 1 | PIR: 1 | P1: 0.1 | P2: 0.2 | P3: 0.1 | P4: 0.5 | P5: 0.0
             
-            if len(parts) == 2:
-                val = int(parts[1])
-                data_buffer.append(val)
+            try:
+                # Parse Data
+                data = json.loads(line)
+
+                # Extract Values
+                dist = float(data.get('D', 100.0))
+                vib = int(data.get('V', 0))
+                ir = int(data.get('IR', 0))
+                pir = int(data.get('PIR', 0))
+                piezos = [float(data.get(f'P{i}', 0.0)) for i in range(1, 6)]
                 
-                # If we have enough data, PREDICT
-                if len(data_buffer) >= WINDOW_SIZE:
-                    # Feature Extraction (Must match training!)
-                    df = pd.DataFrame({'Voltage': data_buffer})
-                    features = [[
-                        df['Voltage'].max(),
-                        df['Voltage'].std(),
-                        df['Voltage'].min(),
-                        (df['Voltage'] > 50).sum() # Threshold impacts
-                    ]]
-                    
-                    # Get Probability of Class 1 (Stampede)
-                    risk_score = clf.predict_proba(features)[0][1]
-                    
-                    # Write to File
-                    try:
-                        with open(JSON_FILE, "w") as f:
-                            json.dump({"risk": risk_score}, f)
-                            f.flush()
-                            os.fsync(f.fileno())
-                    except:
-                        pass
+                # --- RISK CALCULATION ---
+                # 1. Distance Risk (20%): High if < 50cm
+                score_dist = 1.0 if dist < 50 else 0.0
+                
+                # 2. Vibration Risk (20%): High if detected
+                score_vib = 1.0 if vib == 1 else 0.0
+                
+                # 3. Motion Risk (20%): High if any motion
+                score_motion = 1.0 if (ir == 1 or pir == 1) else 0.0
+                
+                # 4. Piezo Risk (40%): Accumulate pressure
+                total_pressure = sum(piezos)
+                score_piezo = min(1.0, total_pressure / 50.0)
 
-                    # Print status
-                    bar = "█" * int(risk_score * 10)
-                    print(f"Piezo Risk: {risk_score:.2f} | {bar}")
+                # Total Weighted Risk
+                final_risk = (0.2 * score_dist) + \
+                             (0.2 * score_vib) + \
+                             (0.2 * score_motion) + \
+                             (0.4 * score_piezo)
 
-                    # Reset Buffer (Sliding window overlap could be better, but this is simple)
-                    data_buffer = [] 
+                # Write to File
+                try:
+                    with open(JSON_FILE, "w") as f:
+                        json.dump({
+                            "risk": final_risk,
+                            "sensors": data
+                        }, f)
+                        f.flush()
+                        os.fsync(f.fileno())
+                except:
+                    pass
 
-        except Exception as e:
-            pass # Ignore glitches
+                # Print status
+                bar = "█" * int(final_risk * 10)
+                print(f"Risk: {final_risk:.2f} | D:{dist} V:{vib} M:{ir|pir} P:{total_pressure:.1f} | {bar}")
+
+            except ValueError:
+                pass # Parsing error (incomplete line)
+
+    except Exception as e:
+        pass # Serial glitches
