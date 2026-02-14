@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrated Crowd Monitor</title>
+    <style>
+        body { font-family: sans-serif; background: #111; color: white; margin: 0; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: #222; padding: 20px; border-radius: 10px; border: 1px solid #333; }
+        
+        img { width: 100%; border-radius: 8px; border: 2px solid #555; }
+        
+        h2 { margin-top: 0; color: #ccc; }
+        .value { float: right; font-weight: bold; color: #0ff; }
+        
+        .progress { background: #444; height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden; }
+        .bar { height: 100%; width: 0%; transition: width 0.5s; }
+        
+        .alert-box { 
+            text-align: center; padding: 15px; font-size: 1.5em; font-weight: bold; 
+            margin-top: 20px; border-radius: 8px; 
+        }
+        .safe { background: #064e3b; color: #6ee7b7; }
+        .warning { background: #713f12; color: #fcd34d; }
+        .critical { background: #7f1d1d; color: #fca5a5; animation: blink 1s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+
+    <div class="alert-box safe" id="main-alert">INITIALIZING SYSTEM...</div>
+
+    <div class="grid" style="margin-top: 20px;">
+        <div class="card">
+            <h2>📷 Live Snapshot</h2>
+            <img id="snapshot" src="/latest_image" alt="Loading...">
+            <div style="margin-top: 10px; font-size: 0.9em; color: #888;">
+                Updates every 1.0s | Confidence: <span id="cam-conf" style="color:white">100%</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🧠 Fusion Engine Stats</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <div>Camera Risk (People Count) <span class="value" id="val-cam">0.0</span></div>
+                <div class="progress"><div id="bar-cam" class="bar" style="background:#3b82f6"></div></div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <div>Piezo Risk (Vibration AI) <span class="value" id="val-piezo">0.0</span></div>
+                <div class="progress"><div id="bar-piezo" class="bar" style="background:#a855f7"></div></div>
+            </div>
+
+            <hr style="border-color:#333">
+
+            <div style="margin-bottom: 15px;">
+                <div>Total Fused Risk <span class="value" id="val-total">0.0</span></div>
+                <div class="progress"><div id="bar-total" class="bar" style="background:#ef4444"></div></div>
+            </div>
+            
+            <p style="font-size:0.8em; color:#aaa">
+                Dynamic Weights: Cam <b id="w-cam">0.6</b> | Piezo <b id="w-piezo">0.4</b>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function updateSystem() {
+            // 1. Refresh Snapshot Image
+            // We add a timestamp to force the browser to reload the image
+            const img = document.getElementById('snapshot');
+            img.src = "/latest_image?t=" + new Date().getTime();
+
+            // 2. Fetch Data
+            fetch('/api/fusion_stats')
+                .then(r => r.json())
+                .then(data => {
+                    // Update Values
+                    document.getElementById('val-cam').innerText = data.camera.risk.toFixed(2);
+                    document.getElementById('val-piezo').innerText = data.piezo.risk.toFixed(2);
+                    document.getElementById('val-total').innerText = data.fusion.total_risk.toFixed(2);
+                    document.getElementById('cam-conf').innerText = Math.round(data.camera.confidence * 100) + "%";
+
+                    // Update Bars
+                    document.getElementById('bar-cam').style.width = (data.camera.risk * 100) + "%";
+                    document.getElementById('bar-piezo').style.width = (data.piezo.risk * 100) + "%";
+                    document.getElementById('bar-total').style.width = (data.fusion.total_risk * 100) + "%";
+
+                    // Update Weights Text
+                    document.getElementById('w-cam').innerText = data.fusion.weights.cam;
+                    document.getElementById('w-piezo').innerText = data.fusion.weights.piezo;
+
+                    // Update Alert Box
+                    const alertBox = document.getElementById('main-alert');
+                    const status = data.fusion.status;
+                    
+                    alertBox.className = "alert-box"; // reset
+                    if (status === "CRITICAL") {
+                        alertBox.classList.add("critical");
+                        alertBox.innerText = "🚨 CRITICAL WARNING: STAMPEDE RISK DETECTED 🚨";
+                    } else if (status === "WARNING") {
+                        alertBox.classList.add("warning");
+                        alertBox.innerText = "⚠️ SYSTEM WARNING: High Crowd Density";
+                    } else {
+                        alertBox.classList.add("safe");
+                        alertBox.innerText = "✅ SYSTEM STATUS: NORMAL";
+                    }
+                });
+        }
+
+        // Run update every 1 second
+        setInterval(updateSystem, 1000);
+    </script>
+</body>
+</html>
