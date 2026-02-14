@@ -20,6 +20,7 @@ app = Flask(__name__)
 
 # --- GLOBAL SHARED STATE ---
 # This dictionary replaces your multiple JSON files
+
 system_state = {
     "camera": {
         "person_count": 0,
@@ -154,19 +155,33 @@ def camera_snapshot_worker():
         
         # print(f"✅ Frame Captured: {frame.shape}") # Verify we actually get data
         
-        # 2. Visibility Check (Blind/Dark Detection)
+        # 2. Visibility Check (Blind/Dark/Blur Detection)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         brightness = np.mean(gray)
         contrast = np.std(gray)
         
+        # Blur Detection using Laplacian Variance
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        
         # Debug Info on Frame
-        cv2.putText(frame, f"B:{brightness:.1f} C:{contrast:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        cv2.putText(frame, f"B:{brightness:.1f} C:{contrast:.1f} Blur:{laplacian_var:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         
         confidence = 1.0
-        # Relaxed thresholds for testing: Brightness < 10 (very dark) or Contrast < 5
+        status_text = ""
+        
+        # Check for poor visibility conditions
         if brightness < 10 or contrast < 5:
-            confidence = 0.1 # Camera is blocked or dark
-            cv2.putText(frame, "POOR VISIBILITY", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+            confidence = 0.1
+            status_text = "POOR VISIBILITY - DARK"
+        elif laplacian_var < 100:  # Threshold for blur detection (adjust as needed)
+            confidence = 0.1
+            status_text = "POOR VISIBILITY - BLURRY"
+        
+        if status_text:
+            cv2.putText(frame, status_text, (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+            system_state["camera"]["status"] = "BLOCKED"
+        else:
+            system_state["camera"]["status"] = "CLEAR"
         
         # 3. YOLO Detection
         count = 0
